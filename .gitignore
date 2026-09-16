@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Base de datos SQLite (datos locales, no van al repo)
+*.db
+*.sqlite
+*.sqlite3
+
+# IDEs / Editores
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Pytest cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Distribución
+dist/
+build/
+*.egg-info/
