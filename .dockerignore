@@ -1,0 +1,45 @@
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments (NO copies venv al contenedor — se instala fresh dentro)
+venv
+env
+ENV
+.venv
+
+# Base de datos local — que el contenedor arranque limpio
+*.db
+*.sqlite
+*.sqlite3
+
+# Tests cache
+.pytest_cache
+.coverage
+htmlcov
+
+# Git (el contenedor no necesita historial)
+.git
+.gitignore
+
+# IDEs
+.vscode
+.idea
+*.swp
+.DS_Store
+
+# Docker meta (no te copies a ti mismo)
+Dockerfile
+.dockerignore
+
+# Documentación
+README.md
+LICENSE
+
+# Distribución
+dist
+build
+*.egg-info

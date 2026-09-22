@@ -125,6 +125,60 @@ Salida esperada:
 
 ---
 
+## 🐳 Docker
+
+El proyecto incluye Dockerfile y `.dockerignore` para ejecutar la API en un contenedor sin necesidad de tener Python instalado localmente.
+
+### Construir la imagen
+
+```bash
+docker build -t taskmanager-python:v1 .
+```
+
+### Ejecutar el contenedor
+
+Con volumen para persistir la base de datos SQLite entre reinicios:
+
+```bash
+# Windows PowerShell
+docker run -d -p 8000:8000 -v ${PWD}:/app --name taskmanager taskmanager-python:v1
+
+# Linux / Mac
+docker run -d -p 8000:8000 -v $(pwd):/app --name taskmanager taskmanager-python:v1
+```
+
+La API estará disponible en:
+- API → http://localhost:8000
+- Swagger UI → http://localhost:8000/docs
+
+### Comandos útiles
+
+```bash
+# Ver contenedores corriendo
+docker ps
+
+# Ver logs del contenedor
+docker logs -f taskmanager
+
+# Parar el contenedor
+docker stop taskmanager
+
+# Arrancarlo de nuevo (mantiene datos gracias al volumen)
+docker start taskmanager
+```
+
+### Arquitectura del contenedor
+
+- Base: `python:3.14-slim` (~150 MB, minimalista)
+- Dependencias: instaladas con `pip install --no-cache-dir` para reducir tamaño de imagen
+- Bind mount `-v ${PWD}:/app` para persistir `tasks.db` en el host
+- Puerto 8000 expuesto para uvicorn
+
+---
+
+## 📈 Roadmap
+---
+
 ## 📈 Roadmap
 
 Este proyecto es parte de un sprint personal de aprendizaje de 14 días:
@@ -134,7 +188,8 @@ Este proyecto es parte de un sprint personal de aprendizaje de 14 días:
 - ✅ Día 3 — SQLAlchemy + SQLite (persistencia real)
 - ✅ Día 4 — Arquitectura en capas (repository)
 - ✅ Día 5 — Tests con pytest + push a GitHub
-- 🔜 Días 6-14 — Dockerización + PostgreSQL + GitHub Actions CI/CD
+- ✅ Días 6-8 — Docker: Dockerfile, .dockerignore, volúmenes para persistencia
+- 🔜 Días 9-14 — Migración a PostgreSQL + docker-compose + GitHub Actions CI/CD
 
 ---
 
