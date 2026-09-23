@@ -1,6 +1,6 @@
-# Task Manager API — FastAPI + SQLite
+# Task Manager API — FastAPI + SQLAlchemy + Docker Compose
 
-REST API para gestión de tareas construida con **Python 3.14 + FastAPI + SQLAlchemy 2.0 + SQLite**.
+REST API para gestión de tareas construida con **Python 3.14 + FastAPI + SQLAlchemy 2.0 + PostgreSQL (Docker Compose) / SQLite (dev local)**.
 
 Proyecto personal desarrollado como práctica de backend moderno en Python siguiendo arquitectura en capas y con suite de tests automatizados con pytest.
 
@@ -12,8 +12,9 @@ Proyecto personal desarrollado como práctica de backend moderno en Python sigui
 - **FastAPI** — framework web asíncrono, generación automática de OpenAPI/Swagger
 - **SQLAlchemy 2.0** — ORM
 - **Pydantic 2** — validación de datos y serialización JSON
-- **SQLite** — persistencia (base de datos embebida)
+- **PostgreSQL 16** (Docker Compose) / **SQLite** (dev local) — persistencia
 - **Uvicorn** — servidor ASGI
+- **Docker + docker-compose** — containerización y orquestación
 - **pytest** + **httpx** — testing
 
 ---
@@ -176,7 +177,67 @@ docker start taskmanager
 
 ---
 
-## 📈 Roadmap
+## 🐘 Docker Compose (PostgreSQL + API en 1 comando)
+
+El proyecto incluye `docker-compose.yml` que orquesta la API + PostgreSQL como servicios separados con red interna, volumen persistente y healthcheck.
+
+### Levantar toda la infraestructura
+
+```bash
+docker-compose up -d
+```
+
+Un solo comando construye la imagen de la API, descarga PostgreSQL 16, crea la red interna, el volumen persistente y arranca ambos servicios en orden (la API espera al healthcheck de la BD).
+
+### Verificar estado
+
+```bash
+docker-compose ps
+```
+
+Deberías ver 2 servicios `Up`:
+- `taskmanager-db` — PostgreSQL 16 (healthy)
+- `taskmanager-api` — FastAPI
+
+### Configuración por variables de entorno (12-Factor App)
+
+La conexión a la base de datos se define via `DATABASE_URL`. En `docker-compose.yml` se establece:
+
+```yaml
+DATABASE_URL: postgresql://admin:secret@db:5432/tasksdb
+```
+
+Cuando la variable no existe (ejecución local sin Docker), el código usa SQLite como fallback:
+
+```python
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./tasks.db")
+```
+
+### Persistencia real
+
+Los datos de PostgreSQL viven en el volumen nombrado `postgres-data`. Los contenedores pueden destruirse y recrearse sin perder información:
+
+```bash
+docker-compose down       # destruye contenedores (mantiene volumen)
+docker-compose up -d      # recrea, los datos siguen ahí
+```
+
+Para borrar TAMBIÉN los datos:
+
+```bash
+docker-compose down -v    # -v elimina volúmenes
+```
+
+### Inspeccionar la base de datos manualmente
+
+```bash
+docker exec -it taskmanager-db psql -U admin -d tasksdb
+```
+
+Comandos útiles dentro de `psql`:
+- `\dt` — listar tablas
+- `SELECT * FROM tasks;` — ver todas las tasks
+- `\q` — salir
 ---
 
 ## 📈 Roadmap
@@ -189,7 +250,8 @@ Este proyecto es parte de un sprint personal de aprendizaje de 14 días:
 - ✅ Día 4 — Arquitectura en capas (repository)
 - ✅ Día 5 — Tests con pytest + push a GitHub
 - ✅ Días 6-8 — Docker: Dockerfile, .dockerignore, volúmenes para persistencia
-- 🔜 Días 9-14 — Migración a PostgreSQL + docker-compose + GitHub Actions CI/CD
+- ✅ Día 9 — Migración a PostgreSQL + docker-compose (12-Factor App)
+- 🔜 Días 10-14 — GitHub Actions CI/CD + integración Claude API en endpoint /tasks/suggest
 
 ---
 
