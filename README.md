@@ -2,6 +2,8 @@
 
 REST API para gestión de tareas construida con **Python 3.14 + FastAPI + SQLAlchemy 2.0 + PostgreSQL (Docker Compose) / SQLite (dev local)**.
 
+[![CI](https://github.com/matipirro/taskmanager-python/actions/workflows/ci.yml/badge.svg)](https://github.com/matipirro/taskmanager-python/actions/workflows/ci.yml)
+
 Proyecto personal desarrollado como práctica de backend moderno en Python siguiendo arquitectura en capas y con suite de tests automatizados con pytest.
 
 ---
@@ -239,6 +241,23 @@ Comandos útiles dentro de `psql`:
 - `SELECT * FROM tasks;` — ver todas las tasks
 - `\q` — salir
 ---
+
+---
+
+## 🤖 CI/CD (GitHub Actions)
+
+El proyecto tiene un workflow de integración continua que se ejecuta automáticamente en cada `push` a `main` y en cada `pull_request`.
+
+En cada ejecución:
+
+1. Se levanta una máquina virtual Ubuntu efímera
+2. Se instala Python 3.13
+3. Se instalan las dependencias con `pip install -r requirements.txt`
+4. Se ejecuta la suite completa de tests con `pytest -v`
+
+Si algún test falla, el commit queda marcado con una X roja en GitHub y se envía notificación al autor.
+
+El workflow completo está definido en `.github/workflows/ci.yml`.
 
 ## 📈 Roadmap
 
