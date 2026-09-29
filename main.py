@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from database import engine, Base, get_db
 import repository as task_repo
+from ai_service import suggest_subtasks
 
 # Crea las tablas la primera vez que arranca
 Base.metadata.create_all(bind=engine)
@@ -27,6 +28,10 @@ class TaskResponse(BaseModel):
     completed: bool
 
     model_config = ConfigDict(from_attributes=True)
+
+class SuggestResponse(BaseModel):
+    task_id: int
+    subtasks: list[str]
 
 # ---------- Endpoints ----------
 @app.get("/")
@@ -64,3 +69,17 @@ def borrar_task(task_id: int, db: Session = Depends(get_db)):
     if not task_repo.delete_task(db, task_id):
         raise HTTPException(status_code=404, detail=f"Task {task_id} no encontrada")
     return {"mensaje": f"Task {task_id} eliminada"}
+
+@app.post("/tasks/{task_id}/suggest", response_model=SuggestResponse)
+def sugerir_subtasks(task_id: int, db: Session = Depends(get_db)):
+    """Usa Claude para sugerir 3 subtareas a partir de una tarea existente."""
+    task = task_repo.get_task_by_id(db, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} no encontrada")
+
+    try:
+        subtasks = suggest_subtasks(task.title, task.description)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=f"Error de IA: {e}") from e
+
+    return {"task_id": task_id, "subtasks": subtasks}

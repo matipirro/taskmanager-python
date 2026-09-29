@@ -1,10 +1,10 @@
-# Task Manager API — FastAPI + SQLAlchemy + Docker Compose
+# Task Manager API — FastAPI + SQLAlchemy + Docker Compose + Claude API
 
-REST API para gestión de tareas construida con **Python 3.14 + FastAPI + SQLAlchemy 2.0 + PostgreSQL (Docker Compose) / SQLite (dev local)**.
+REST API para gestión de tareas construida con **Python 3.14 + FastAPI + SQLAlchemy 2.0 + PostgreSQL (Docker Compose) / SQLite (dev local)**, con integración de **Claude API** (Anthropic) para generar subtareas automáticamente.
 
 [![CI](https://github.com/matipirro/taskmanager-python/actions/workflows/ci.yml/badge.svg)](https://github.com/matipirro/taskmanager-python/actions/workflows/ci.yml)
 
-Proyecto personal desarrollado como práctica de backend moderno en Python siguiendo arquitectura en capas y con suite de tests automatizados con pytest.
+Proyecto personal desarrollado como práctica de backend moderno en Python siguiendo arquitectura en capas, con suite de tests automatizados con pytest e integración de LLM en el flujo.
 
 ---
 
@@ -17,7 +17,8 @@ Proyecto personal desarrollado como práctica de backend moderno en Python sigui
 - **PostgreSQL 16** (Docker Compose) / **SQLite** (dev local) — persistencia
 - **Uvicorn** — servidor ASGI
 - **Docker + docker-compose** — containerización y orquestación
-- **pytest** + **httpx** — testing
+- **pytest** + **httpx** + **unittest.mock** — testing
+- **Anthropic SDK** + **python-dotenv** — integración con Claude API
 
 ---
 
@@ -27,13 +28,14 @@ Proyecto organizado en capas para separación clara de responsabilidades:
 
 ```
 taskmanager-python/
-├── main.py           # Endpoints HTTP + schemas Pydantic (capa web)
-├── repository.py     # Operaciones CRUD sobre la BD (capa de datos)
-├── models.py         # Modelo ORM SQLAlchemy (entidad Task)
-├── database.py       # Configuración del engine + session (infraestructura)
-├── test_main.py      # Suite de tests con pytest + TestClient
-├── requirements.txt  # Dependencias del proyecto
-└── tasks.db          # SQLite (generado en runtime)
+├── main.py # Endpoints HTTP + schemas Pydantic (capa web)
+├── repository.py # Operaciones CRUD sobre la BD (capa de datos)
+├── models.py # Modelo ORM SQLAlchemy (entidad Task)
+├── database.py # Configuración del engine + session (infraestructura)
+├── ai_service.py # Integración con Claude API (service layer)
+├── test_main.py # Suite de tests con pytest + TestClient + mock
+├── requirements.txt # Dependencias del proyecto
+└── tasks.db # SQLite (generado en runtime)
 ```
 
 Equivalente conceptual a Spring Boot:
@@ -44,6 +46,7 @@ Equivalente conceptual a Spring Boot:
 | `repository.py` | `interface JpaRepository` |
 | `models.py` con `Task(Base)` | `@Entity class Task` |
 | `database.py` con `SessionLocal` | `DataSource` + `EntityManager` |
+| `ai_service.py` | `@Service class AiService` |
 | `Depends(get_db)` | `@Autowired` |
 
 ---
@@ -66,6 +69,9 @@ source venv/bin/activate
 
 # 4. Instalar dependencias
 pip install -r requirements.txt
+
+# 5. Crear .env con tu Anthropic API key (para el endpoint /suggest)
+# Ver sección "Integración con Claude API" más abajo
 ```
 
 ---
@@ -94,6 +100,7 @@ La API estará disponible en:
 | `POST` | `/tasks` | Crear una nueva tarea |
 | `PUT` | `/tasks/{id}` | Actualizar una tarea |
 | `DELETE` | `/tasks/{id}` | Eliminar una tarea |
+| `POST` | `/tasks/{id}/suggest` | 🤖 Sugerir 3 subtareas usando **Claude API** (Anthropic) |
 
 Ejemplo de body para `POST /tasks`:
 
@@ -107,23 +114,77 @@ Ejemplo de body para `POST /tasks`:
 
 ---
 
+## 🤖 Integración con Claude API (Anthropic)
+
+El endpoint `POST /tasks/{id}/suggest` usa el modelo **Claude Haiku 4.5** de Anthropic para generar automáticamente 3 subtareas accionables a partir del título y descripción de una tarea existente.
+
+### Configuración
+
+Requiere una variable de entorno con tu API key de Anthropic:
+
+```bash
+# .env (NO subir a git — ya está en .gitignore)
+ANTHROPIC_API_KEY=sk-ant-api03-...
+```
+
+Obtén tu key en [console.anthropic.com](https://console.anthropic.com).
+
+### Ejemplo de uso
+
+**Request:**
+```bash
+curl -X POST http://127.0.0.1:8000/tasks/1/suggest
+```
+
+**Response:**
+```json
+{
+  "task_id": 1,
+  "subtasks": [
+    "Estudiar la documentación oficial de SQLAlchemy ORM y crear un primer modelo de tabla",
+    "Implementar operaciones CRUD (Create, Read, Update, Delete) con una base de datos SQLite de prueba",
+    "Practicar consultas avanzadas: filtros, joins y relaciones entre tablas en un proyecto ejemplo"
+  ]
+}
+```
+
+### Arquitectura
+
+- **`ai_service.py`** — módulo aislado que encapsula la llamada a Anthropic (Service Layer pattern)
+- **Prompt estructurado** que fuerza a Claude a devolver JSON parseable
+- **Manejo de errores**: si Claude devuelve JSON inválido, la API responde `502 Bad Gateway`
+- **Coste típico por llamada**: ~$0.001 (Haiku 4.5, ~450 tokens totales)
+
+### Tests
+
+Los tests del endpoint usan `unittest.mock.patch` para simular la respuesta de Claude, evitando llamadas reales a la API en CI/CD:
+
+```python
+with patch("ai_service._client.messages.create", return_value=fake_response):
+    response = client.post(f"/tasks/{task_id}/suggest")
+```
+
+Esto permite que la suite completa corra en **~2 segundos** y **sin gastar tokens**.
+
+---
+
 ## 🧪 Tests
 
-Suite de **8 tests** con **pytest** y `TestClient` de FastAPI que cubren:
+Suite de **11 tests** con **pytest** y `TestClient` de FastAPI que cubren:
 
 - Endpoints básicos (`/`, `/health`)
 - CRUD completo (POST, GET all, GET by id, PUT, DELETE)
 - Códigos de error 404 en operaciones sobre id inexistente
 - Test de integración end-to-end (crear → obtener → actualizar → borrar)
+- Endpoint `/suggest` con **mock de Claude API** (`unittest.mock`) — happy path, 404 y 502
 
 ```bash
 pytest -v
 ```
 
 Salida esperada:
-
 ```
-8 passed in 1.09s
+11 passed in 2.40s
 ```
 
 ---
@@ -240,7 +301,6 @@ Comandos útiles dentro de `psql`:
 - `\dt` — listar tablas
 - `SELECT * FROM tasks;` — ver todas las tasks
 - `\q` — salir
----
 
 ---
 
@@ -255,9 +315,11 @@ En cada ejecución:
 3. Se instalan las dependencias con `pip install -r requirements.txt`
 4. Se ejecuta la suite completa de tests con `pytest -v`
 
-Si algún test falla, el commit queda marcado con una X roja en GitHub y se envía notificación al autor.
+Si algún test falla, el commit queda marcado con una X roja en GitHub y se envía notificación al autor. Los tests del endpoint `/suggest` usan mocks, por lo que **CI/CD no gasta tokens** de la API.
 
 El workflow completo está definido en `.github/workflows/ci.yml`.
+
+---
 
 ## 📈 Roadmap
 
@@ -270,7 +332,9 @@ Este proyecto es parte de un sprint personal de aprendizaje de 14 días:
 - ✅ Día 5 — Tests con pytest + push a GitHub
 - ✅ Días 6-8 — Docker: Dockerfile, .dockerignore, volúmenes para persistencia
 - ✅ Día 9 — Migración a PostgreSQL + docker-compose (12-Factor App)
-- 🔜 Días 10-14 — GitHub Actions CI/CD + integración Claude API en endpoint /tasks/suggest
+- ✅ Día 10 — GitHub Actions CI/CD (tests automáticos en cada push)
+- ✅ Día 11 — Integración Claude API (endpoint `/tasks/{id}/suggest` + tests con mock)
+- 🔜 Días 12-14 — Consolidación, mejoras y despliegue
 
 ---
 
