@@ -90,6 +90,7 @@ def test_flujo_completo_crud():
 
     # 4. Borrar
     delete_response = client.delete(f"/tasks/{task_id}")
+    assert delete_response.status_code == 200
 
     # 5. Verificar que ya no existe
     verify_response = client.get(f"/tasks/{task_id}")
@@ -105,8 +106,8 @@ def _mock_claude_response(json_text: str) -> MagicMock:
     return mock_response
 
 
-def test_suggest_devuelve_subtareas_cuando_claude_responde_ok():
-    """Happy path: Claude devuelve JSON válido, endpoint devuelve 200 con las subtareas."""
+def test_suggest_persiste_subtareas_cuando_claude_responde_ok():
+    """Happy path: Claude devuelve JSON válido, endpoint persiste subtasks y devuelve 200."""
     # 1. Crear una task real
     create_response = client.post("/tasks", json={
         "title": "Aprender Docker",
@@ -120,11 +121,18 @@ def test_suggest_devuelve_subtareas_cuando_claude_responde_ok():
     with patch("ai_service._client.messages.create", return_value=_mock_claude_response(fake_json)):
         response = client.post(f"/tasks/{task_id}/suggest")
 
-    # 3. Verificar
+    # 3. Verificar respuesta
     assert response.status_code == 200
     data = response.json()
     assert data["task_id"] == task_id
-    assert data["subtasks"] == ["Instalar Docker Desktop", "Crear Dockerfile", "docker build + run"]
+    assert len(data["subtasks"]) == 3
+    titles = [s["title"] for s in data["subtasks"]]
+    assert titles == ["Instalar Docker Desktop", "Crear Dockerfile", "docker build + run"]
+    # Cada subtask tiene id generado por la BD y task_id apuntando a la task padre
+    for subtask in data["subtasks"]:
+        assert "id" in subtask
+        assert subtask["task_id"] == task_id
+        assert subtask["completed"] is False
 
 
 def test_suggest_devuelve_404_si_task_no_existe():
@@ -148,3 +156,85 @@ def test_suggest_devuelve_502_si_claude_responde_basura():
     # 3. Verificar
     assert response.status_code == 502
     assert "Error de IA" in response.json()["detail"]
+
+
+# ---------- Tests de endpoints de Subtasks ----------
+
+def test_listar_subtasks_devuelve_lista_persistida():
+    """GET /tasks/{id}/subtasks devuelve las subtasks que /suggest persistió."""
+    # 1. Crear task
+    task_id = client.post("/tasks", json={"title": "Task con subs", "description": "test"}).json()["id"]
+
+    # 2. Suggest (mockeado) → persiste 3 subtasks
+    fake_json = '{"subtasks": ["Sub A", "Sub B", "Sub C"]}'
+    with patch("ai_service._client.messages.create", return_value=_mock_claude_response(fake_json)):
+        client.post(f"/tasks/{task_id}/suggest")
+
+    # 3. Listar las subtasks
+    response = client.get(f"/tasks/{task_id}/subtasks")
+    assert response.status_code == 200
+    subtasks = response.json()
+    assert len(subtasks) == 3
+    assert [s["title"] for s in subtasks] == ["Sub A", "Sub B", "Sub C"]
+
+
+def test_listar_subtasks_task_inexistente_devuelve_404():
+    response = client.get("/tasks/99999/subtasks")
+    assert response.status_code == 404
+    assert "no encontrada" in response.json()["detail"]
+
+
+def test_actualizar_subtask_marca_completada():
+    """PUT /subtasks/{id} con completed=true actualiza solo ese campo."""
+    # 1. Crear task + suggest para tener una subtask
+    task_id = client.post("/tasks", json={"title": "T"}).json()["id"]
+    fake_json = '{"subtasks": ["Primera", "Segunda", "Tercera"]}'
+    with patch("ai_service._client.messages.create", return_value=_mock_claude_response(fake_json)):
+        suggest_resp = client.post(f"/tasks/{task_id}/suggest")
+    subtask_id = suggest_resp.json()["subtasks"][0]["id"]
+
+    # 2. Marcar completada
+    response = client.put(f"/subtasks/{subtask_id}", json={"completed": True})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == subtask_id
+    assert data["completed"] is True
+    assert data["title"] == "Primera"  # título intacto (exclude_unset funcionando)
+
+
+def test_actualizar_subtask_inexistente_devuelve_404():
+    response = client.put("/subtasks/99999", json={"completed": True})
+    assert response.status_code == 404
+
+
+def test_actualizar_subtask_sin_campos_devuelve_400():
+    """Enviar body vacío debe devolver 400."""
+    # Necesitamos una subtask real para que llegue a la validación
+    task_id = client.post("/tasks", json={"title": "T"}).json()["id"]
+    fake_json = '{"subtasks": ["A", "B", "C"]}'
+    with patch("ai_service._client.messages.create", return_value=_mock_claude_response(fake_json)):
+        suggest_resp = client.post(f"/tasks/{task_id}/suggest")
+    subtask_id = suggest_resp.json()["subtasks"][0]["id"]
+
+    response = client.put(f"/subtasks/{subtask_id}", json={})
+    assert response.status_code == 400
+    assert "No se enviaron campos" in response.json()["detail"]
+
+
+def test_cascade_delete_borra_subtasks():
+    """Al borrar una Task, sus Subtasks se borran automáticamente (cascade)."""
+    # 1. Crear task + suggest
+    task_id = client.post("/tasks", json={"title": "Will be deleted"}).json()["id"]
+    fake_json = '{"subtasks": ["A", "B", "C"]}'
+    with patch("ai_service._client.messages.create", return_value=_mock_claude_response(fake_json)):
+        client.post(f"/tasks/{task_id}/suggest")
+
+    # 2. Confirmar que hay 3 subtasks
+    assert len(client.get(f"/tasks/{task_id}/subtasks").json()) == 3
+
+    # 3. Borrar la task
+    assert client.delete(f"/tasks/{task_id}").status_code == 200
+
+    # 4. GET subtasks de task borrada → 404
+    response = client.get(f"/tasks/{task_id}/subtasks")
+    assert response.status_code == 404

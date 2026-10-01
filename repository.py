@@ -5,7 +5,7 @@ Los endpoints NO tocan SQLAlchemy directamente — solo llaman a estas funciones
 """
 
 from sqlalchemy.orm import Session
-from models import Task as TaskModel
+from models import Task as TaskModel, Subtask as SubtaskModel
 
 
 def get_all_tasks(db: Session):
@@ -47,3 +47,41 @@ def delete_task(db: Session, task_id: int):
     db.delete(task)
     db.commit()
     return True
+
+
+# ---------- Subtasks ----------
+
+def create_subtasks(db: Session, task_id: int, titles: list[str]):
+    """
+    Crea múltiples subtasks asociadas a una task.
+    INSERT INTO subtasks (title, task_id) VALUES (...) x N
+    """
+    new_subtasks = [SubtaskModel(title=title, task_id=task_id) for title in titles]
+    db.add_all(new_subtasks)
+    db.commit()
+    # Refresh para obtener los ids generados por la BD
+    for s in new_subtasks:
+        db.refresh(s)
+    return new_subtasks
+
+
+def get_subtasks_by_task(db: Session, task_id: int):
+    """SELECT * FROM subtasks WHERE task_id = ?"""
+    return db.query(SubtaskModel).filter(SubtaskModel.task_id == task_id).all()
+
+
+def get_subtask_by_id(db: Session, subtask_id: int):
+    """SELECT * FROM subtasks WHERE id = ?"""
+    return db.query(SubtaskModel).filter(SubtaskModel.id == subtask_id).first()
+
+
+def update_subtask(db: Session, subtask_id: int, subtask_data: dict):
+    """UPDATE subtasks SET ... WHERE id = ?"""
+    subtask = get_subtask_by_id(db, subtask_id)
+    if subtask is None:
+        return None
+    for key, value in subtask_data.items():
+        setattr(subtask, key, value)
+    db.commit()
+    db.refresh(subtask)
+    return subtask
