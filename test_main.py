@@ -35,7 +35,7 @@ def test_crear_task_devuelve_201_con_id():
     }
     response = client.post("/tasks", json=payload)
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     data = response.json()
     assert data["title"] == "Test task"
     assert data["completed"] is False
@@ -74,7 +74,7 @@ def test_flujo_completo_crud():
     # 1. Crear
     payload = {"title": "Flujo CRUD", "description": "test integración", "completed": False}
     create_response = client.post("/tasks", json=payload)
-    assert create_response.status_code == 200
+    assert create_response.status_code == 201
     task_id = create_response.json()["id"]
 
     # 2. Obtener
@@ -238,3 +238,45 @@ def test_cascade_delete_borra_subtasks():
     # 4. GET subtasks de task borrada → 404
     response = client.get(f"/tasks/{task_id}/subtasks")
     assert response.status_code == 404
+    
+# ---------- Tests de validación Pydantic (422 Unprocessable Entity) ----------
+
+def test_crear_task_sin_title_devuelve_422():
+    """Pydantic rechaza el request si falta un campo obligatorio."""
+    response = client.post("/tasks", json={"description": "sin title"})
+    assert response.status_code == 422
+
+
+def test_crear_task_con_title_vacio_devuelve_422():
+    """Pydantic rechaza title vacío (min_length=1)."""
+    response = client.post("/tasks", json={"title": ""})
+    assert response.status_code == 422
+
+
+def test_crear_task_con_title_muy_largo_devuelve_422():
+    """Pydantic rechaza title > 200 caracteres."""
+    response = client.post("/tasks", json={"title": "x" * 201})
+    assert response.status_code == 422
+
+
+def test_crear_task_con_campo_extra_devuelve_422():
+    """extra='forbid' rechaza campos no declarados en el schema."""
+    response = client.post("/tasks", json={
+        "title": "Test",
+        "campo_no_existe": "foo"
+    })
+    assert response.status_code == 422
+
+
+def test_actualizar_subtask_con_title_vacio_devuelve_422():
+    """SubtaskUpdate también valida title no vacío si se envía."""
+    # Primero crear task + suggest para tener una subtask
+    task_id = client.post("/tasks", json={"title": "T"}).json()["id"]
+    fake_json = '{"subtasks": ["A", "B", "C"]}'
+    with patch("ai_service._client.messages.create", return_value=_mock_claude_response(fake_json)):
+        suggest_resp = client.post(f"/tasks/{task_id}/suggest")
+    subtask_id = suggest_resp.json()["subtasks"][0]["id"]
+
+    # title vacío debe fallar con 422
+    response = client.put(f"/subtasks/{subtask_id}", json={"title": ""})
+    assert response.status_code == 422

@@ -47,11 +47,11 @@ Proyecto personal desarrollado como práctica de backend moderno en Python sigui
 
 ## Tests
 
-17 tests con pytest + TestClient + unittest.mock. CI/CD no gasta tokens (mocks).
+22 tests con pytest + TestClient + unittest.mock. Incluye validaciones Pydantic (422), happy paths, errores (404, 502) y cascade delete. CI/CD no gasta tokens (mocks).
 
 ```bash
 pytest -v
-```17 passed in 2.42s
+```22 passed in 2.49s
 ---
 
 ## Roadmap
@@ -61,8 +61,9 @@ pytest -v
 - Día 9 — PostgreSQL + docker-compose (12-Factor)
 - Día 10 — GitHub Actions CI/CD
 - Día 11 — Integración Claude API
-- **Día 12 — Persistencia subtareas + relación 1-a-N + cascade delete + PATCH semantics**
-- Días 13-14 — Consolidación y despliegue
+- Día 12 - Persistencia subtareas + relación 1-a-N + cascade delete + PATCH semantics
+- **Día 13 - Validaciones Pydantic estrictas (Field, extra='forbid') + Swagger agrupado por tags + OpenAPI metadata**
+- Día 14 - Despliegue
 
 ---
 
