@@ -5,6 +5,7 @@ exit 0 = permitir, exit 2 = bloquear (el mensaje de stderr le llega a Claude).
 """
 import json
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import PurePath
@@ -46,8 +47,29 @@ def check_file_tool(tool_input):
         block(f"no se puede modificar {path}. Edita el .env a mano.")
 
 
+def mentions_env_path(command):
+    """True si algún token del comando es una ruta a un .env protegido.
+
+    Un string entre comillas es un solo token, así que un texto que menciona
+    ".env" no cuenta; `rm ".env"` o `> config/.env` sí.
+    """
+    try:
+        lexer = shlex.shlex(command, posix=False, punctuation_chars=True)
+        lexer.wordchars += "\\:$"
+        tokens = list(lexer)
+    except ValueError:
+        # Comillas sin cerrar: fail-closed con la regex estricta
+        return bool(ENV_IN_COMMAND.search(command))
+
+    for token in tokens:
+        name = re.split(r"[\\/]", token.strip("\"'"))[-1]
+        if ENV_FILE.match(name):
+            return True
+    return False
+
+
 def check_command(command, cwd):
-    if ENV_IN_COMMAND.search(command) and WRITE_OPS.search(command):
+    if mentions_env_path(command) and WRITE_OPS.search(command):
         block("el comando modifica o añade un archivo .env.")
 
     if GIT_COMMIT.search(command):
